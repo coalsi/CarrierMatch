@@ -3,10 +3,10 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Select } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
+import { DateOfBirthInput } from "./date-of-birth-input";
 import { GenderToggle } from "./gender-toggle";
 import { TobaccoToggle } from "./tobacco-toggle";
 import { ProductSelector } from "./product-selector";
@@ -52,7 +52,9 @@ function formatCoverage(value: number): string {
 export function QuoteForm() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
-  const [dob, setDob] = useState("");
+  const [dobMonth, setDobMonth] = useState("");
+  const [dobDay, setDobDay] = useState("");
+  const [dobYear, setDobYear] = useState("");
   const [gender, setGender] = useState<"male" | "female">("male");
   const [state, setState] = useState("");
   const [tobaccoStatus, setTobaccoStatus] = useState<"never" | "quit" | "current">("never");
@@ -61,17 +63,23 @@ export function QuoteForm() {
   const [productTypes, setProductTypes] = useState<ProductType[]>([]);
   const [conditionIds, setConditionIds] = useState<string[]>([]);
 
-  // Calculate age for display
-  const age = dob
-    ? Math.floor(
-        (new Date().getTime() - new Date(dob).getTime()) /
-          (365.25 * 24 * 60 * 60 * 1000)
-      )
-    : null;
+  // Build ISO date and calculate age
+  const dob =
+    dobYear.length === 4 && dobMonth.length >= 1 && dobDay.length >= 1
+      ? `${dobYear}-${dobMonth.padStart(2, "0")}-${dobDay.padStart(2, "0")}`
+      : "";
+
+  const age =
+    dob && !isNaN(new Date(dob).getTime())
+      ? Math.floor(
+          (new Date().getTime() - new Date(dob).getTime()) /
+            (365.25 * 24 * 60 * 60 * 1000)
+        )
+      : null;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!dob || !state) return;
+    if (!dob || !state || dobYear.length !== 4) return;
 
     setLoading(true);
     try {
@@ -98,19 +106,15 @@ export function QuoteForm() {
           <h2 className="text-lg font-semibold text-white">Applicant Info</h2>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-            <div className="space-y-1.5">
-              <Input
-                label="Date of Birth"
-                type="date"
-                value={dob}
-                onChange={(e) => setDob(e.target.value)}
-                required
-                max={new Date().toISOString().split("T")[0]}
-              />
-              {age !== null && age > 0 && (
-                <p className="text-xs text-slate-500 pl-1">Age: {age}</p>
-              )}
-            </div>
+            <DateOfBirthInput
+              month={dobMonth}
+              day={dobDay}
+              year={dobYear}
+              onMonthChange={setDobMonth}
+              onDayChange={setDobDay}
+              onYearChange={setDobYear}
+              age={age}
+            />
             <GenderToggle value={gender} onChange={setGender} />
           </div>
 
