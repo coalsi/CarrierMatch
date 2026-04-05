@@ -1,0 +1,36 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model Search {
+  id                String   @id @default(cuid())
+  createdAt         DateTime @default(now())
+  dateOfBirth       DateTime
+  gender            String
+  state             String
+  tobaccoStatus     String
+  tobaccoQuitMonths Int?
+  coverageAmount    Int
+  productTypes      String
+  conditions        String
+  results           Result[]
+}
+
+model Result {
+  id              String  @id @default(cuid())
+  searchId        String
+  search          Search  @relation(fields: [searchId], references: [id], onDelete: Cascade)
+  carrierId       String
+  carrierName     String
+  eligible        Boolean
+  acceptancePct   Int
+  tierPlacement   String?
+  productResults  String
+  declineReasons  String?
+  notes           String?
+}
