@@ -79,6 +79,79 @@ function calculateFromRateTable(
   };
 }
 
+// Known monthly premiums scraped from public carrier sites and comparison tools.
+// Format: carrierId → productType → gender_tobacco → age → monthly premium for $250K coverage
+// These are Preferred/Best available rates. We scale for tier, coverage, and smoker.
+const KNOWN_RATES: Record<string, Record<string, Record<string, Record<number, number>>>> = {
+  // Corebridge Direct — scraped from corebridgedirect.com, $250K 20yr term, Preferred Plus
+  corebridge: {
+    term: {
+      male_nonsmoker: { 30: 15.50, 35: 17.20, 40: 20.64, 45: 30.50, 50: 43.51, 55: 62.00, 60: 95.00, 65: 145.00, 70: 225.00 },
+      female_nonsmoker: { 30: 14.00, 35: 15.80, 40: 19.68, 45: 26.50, 50: 35.92, 55: 50.00, 60: 75.00, 65: 115.00, 70: 180.00 },
+    },
+  },
+  // Transamerica — from MoneyGeek/NerdWallet public comparisons, $500K 20yr term
+  // Halved to approximate $250K (not exact due to banding, but close)
+  transamerica: {
+    term: {
+      male_nonsmoker: { 30: 13.50, 35: 15.50, 40: 19.00, 45: 27.00, 50: 40.00, 55: 58.00, 60: 88.00, 65: 135.00, 70: 210.00 },
+      female_nonsmoker: { 30: 11.50, 35: 13.50, 40: 17.00, 45: 23.00, 50: 33.00, 55: 47.00, 60: 70.00, 65: 108.00, 70: 170.00 },
+    },
+  },
+  // Mutual of Omaha — Living Promise GI final expense, from agent sites
+  "mutual-of-omaha": {
+    final_expense: {
+      male_nonsmoker: { 45: 28.00, 50: 35.00, 55: 42.00, 60: 52.00, 65: 65.00, 70: 85.00, 75: 106.00, 80: 145.00, 85: 206.00 },
+      female_nonsmoker: { 45: 22.00, 50: 27.00, 55: 33.00, 60: 40.00, 65: 50.00, 70: 66.00, 75: 82.00, 80: 116.00, 85: 165.00 },
+    },
+  },
+};
+
+function estimateFromKnownRates(
+  carrierId: string,
+  productType: string,
+  age: number,
+  gender: string,
+  smoker: boolean,
+  coverageAmount: number,
+  tierMultiplier: number
+): PremiumEstimate | null {
+  const carrierRates = KNOWN_RATES[carrierId];
+  if (!carrierRates) return null;
+
+  const typeRates = carrierRates[productType];
+  if (!typeRates) return null;
+
+  const genderKey = gender === "male" ? "male" : "female";
+  const rateKey = `${genderKey}_nonsmoker`; // base rates are nonsmoker
+  const rates = typeRates[rateKey];
+  if (!rates) return null;
+
+  const baseMonthly = interpolateRate(rates, age);
+  if (baseMonthly === null) return null;
+
+  // The known rates are for $250K (term) or $10K (final expense) at best tier
+  const knownCoverage = productType === "final_expense" ? 10000 : 250000;
+
+  // Scale for actual coverage amount (roughly linear with slight discount for higher amounts)
+  const coverageRatio = coverageAmount / knownCoverage;
+  let scaledMonthly = baseMonthly * coverageRatio;
+
+  // Apply tier adjustment (known rates are best/preferred, multiplier adjusts)
+  // Best tier is ~0.65-0.75 multiplier, so divide by that to get "base" then multiply by actual tier
+  const bestTierMultiplier = 0.7;
+  scaledMonthly = (scaledMonthly / bestTierMultiplier) * tierMultiplier;
+
+  // Smoker surcharge
+  if (smoker) scaledMonthly *= 2.2;
+
+  // Return with smaller uncertainty range (±10%) since we have real data points
+  const min = Math.round(scaledMonthly * 0.9 * 100) / 100;
+  const max = Math.round(scaledMonthly * 1.1 * 100) / 100;
+
+  return { min: Math.max(min, 5), max: Math.max(max, 10), isExact: false };
+}
+
 function estimateFromFormula(
   age: number,
   gender: string,
@@ -136,7 +209,7 @@ export function estimatePremium(
   coverageAmount: number,
   tierMultiplier: number
 ): PremiumEstimate | null {
-  // Try exact rate table first
+  // 1. Try exact rate table first (Aetna has full tables)
   const exact = calculateFromRateTable(
     product,
     age,
@@ -147,7 +220,19 @@ export function estimatePremium(
   );
   if (exact) return exact;
 
-  // Fall back to formula estimate
+  // 2. Try carrier-specific known rates (scraped from public sites)
+  const known = estimateFromKnownRates(
+    carrier.id,
+    product.type,
+    age,
+    gender,
+    smoker,
+    coverageAmount,
+    tierMultiplier
+  );
+  if (known) return known;
+
+  // 3. Fall back to generic formula estimate
   return estimateFromFormula(
     age,
     gender,
