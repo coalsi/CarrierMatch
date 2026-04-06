@@ -42,37 +42,71 @@ function hasKnockout(carrier: CarrierConfig, conditionIds: string[]): boolean {
   return conditionIds.some((cid) => carrier.knockoutConditions.includes(cid));
 }
 
+function isTobaccoTier(name: string): boolean {
+  const lower = name.toLowerCase();
+  // Explicitly tobacco/smoker/nicotine and NOT "non-tobacco"/"nonsmoker"/"non-nicotine"
+  return (
+    (lower.includes("tobacco") || lower.includes("smoker") || lower.includes("nicotine")) &&
+    !lower.includes("non-tobacco") &&
+    !lower.includes("non-nicotine") &&
+    !lower.includes("nonsmoker") &&
+    !lower.includes("non-smoker") &&
+    !lower.includes("non tobacco") &&
+    !lower.includes("non nicotine") &&
+    !lower.includes("non smoker")
+  );
+}
+
+function isNonTobaccoTier(name: string): boolean {
+  const lower = name.toLowerCase();
+  return (
+    lower.includes("non-tobacco") ||
+    lower.includes("non tobacco") ||
+    lower.includes("non-nicotine") ||
+    lower.includes("non nicotine") ||
+    lower.includes("nonsmoker") ||
+    lower.includes("non-smoker") ||
+    lower.includes("non smoker")
+  );
+}
+
+function isNeutralTier(name: string): boolean {
+  // Tiers like "Substandard", "Graded Benefit", "Return of Premium" etc.
+  return !isTobaccoTier(name) && !isNonTobaccoTier(name);
+}
+
 function determineTier(
   carrier: CarrierConfig,
   conditionIds: string[],
   smoker: boolean
 ): { tierId: string; tierName: string; isGraded: boolean; multiplier: number } {
-  // Default: best available tier
   const tiers = carrier.underwritingTiers;
 
-  // Separate tobacco and non-tobacco tiers
+  // Filter tiers based on tobacco status
+  // Smoker: use tobacco tiers + neutral tiers (never non-tobacco tiers)
+  // Non-smoker: use non-tobacco tiers + neutral tiers (never tobacco tiers)
   const applicableTiers = tiers.filter((t) => {
-    const isTobaccoTier =
-      t.name.toLowerCase().includes("tobacco") ||
-      t.name.toLowerCase().includes("smoker") ||
-      t.name.toLowerCase().includes("nicotine");
-    if (smoker) return isTobaccoTier || !t.name.toLowerCase().includes("non");
-    return !isTobaccoTier || t.name.toLowerCase().includes("non");
+    if (smoker) {
+      return isTobaccoTier(t.name) || isNeutralTier(t.name);
+    }
+    return isNonTobaccoTier(t.name) || isNeutralTier(t.name);
   });
+
+  // If no applicable tiers found (carrier doesn't distinguish), use all tiers
+  const searchTiers = applicableTiers.length > 0 ? applicableTiers : tiers;
 
   // Find the worst tier that any condition triggers
   let worstTierIndex = 0;
   for (const condId of conditionIds) {
-    for (let i = 0; i < applicableTiers.length; i++) {
-      const tier = applicableTiers[i];
+    for (let i = 0; i < searchTiers.length; i++) {
+      const tier = searchTiers[i];
       if (tier.triggerConditions.includes(condId) && i > worstTierIndex) {
         worstTierIndex = i;
       }
     }
   }
 
-  // If no conditions trigger any tier, use the best tier for the tobacco class
-  const selectedTier = applicableTiers[worstTierIndex] ?? tiers[0];
+  const selectedTier = searchTiers[worstTierIndex] ?? tiers[0];
 
   return {
     tierId: selectedTier.id,
