@@ -11,6 +11,8 @@ export async function submitQuote(input: {
   state: string;
   tobaccoStatus: string;
   tobaccoQuitMonths?: number;
+  heightInches?: number;
+  weightLbs?: number;
   coverageAmount: number;
   productTypes: ProductType[];
   conditionIds: string[];
@@ -21,6 +23,8 @@ export async function submitQuote(input: {
     state: input.state,
     tobaccoStatus: input.tobaccoStatus as "never" | "quit" | "current",
     tobaccoQuitMonths: input.tobaccoQuitMonths,
+    heightInches: input.heightInches,
+    weightLbs: input.weightLbs,
     coverageAmount: input.coverageAmount,
     productTypes: input.productTypes,
     conditionIds: input.conditionIds,
@@ -35,6 +39,8 @@ export async function submitQuote(input: {
       state: input.state,
       tobaccoStatus: input.tobaccoStatus,
       tobaccoQuitMonths: input.tobaccoQuitMonths,
+      heightInches: input.heightInches,
+      weightLbs: input.weightLbs,
       coverageAmount: input.coverageAmount,
       productTypes: input.productTypes.join(",") || "all",
       conditions: JSON.stringify(input.conditionIds),

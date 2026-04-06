@@ -1,14 +1,22 @@
 import { ProductType } from "@/lib/carriers/types";
 
+export interface ConditionEntry {
+  conditionId: string;
+  diagnosedMonthsAgo?: number; // how many months ago diagnosed/treated
+}
+
 export interface QuoteInput {
   dateOfBirth: string; // ISO date string
   gender: "male" | "female";
   state: string; // 2-letter state code
   tobaccoStatus: "never" | "quit" | "current";
   tobaccoQuitMonths?: number;
+  heightInches?: number; // total height in inches
+  weightLbs?: number; // weight in pounds
   coverageAmount: number;
   productTypes: ProductType[];
-  conditionIds: string[];
+  conditionIds: string[]; // kept for backward compatibility
+  conditions?: ConditionEntry[]; // new: conditions with recency
 }
 
 export interface ProductResult {

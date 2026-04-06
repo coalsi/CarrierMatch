@@ -13,7 +13,8 @@ export function scoreAcceptance(
   tier: TierInfo,
   smoker: boolean,
   age: number,
-  carrier: CarrierConfig
+  carrier: CarrierConfig,
+  bmi?: number | null
 ): number {
   let score = 95;
 
@@ -51,6 +52,14 @@ export function scoreAcceptance(
 
   // Smoker deduction
   if (smoker) score -= 5;
+
+  // BMI deductions
+  if (bmi != null) {
+    if (bmi > 40) score -= 15;
+    else if (bmi > 35) score -= 10;
+    else if (bmi > 31.5) score -= 5;
+    else if (bmi > 28) score -= 2;
+  }
 
   // Age proximity to typical product max (80)
   if (age >= 78) score -= 10;

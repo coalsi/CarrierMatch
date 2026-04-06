@@ -1,9 +1,35 @@
 import { carriers } from "@/lib/carriers";
 import { CarrierConfig, Product, ProductType } from "@/lib/carriers/types";
 import { getConditionById } from "@/lib/conditions/fuzzy-matcher";
-import { QuoteInput, QuoteOutput, CarrierResult, ProductResult } from "./types";
+import { QuoteInput, QuoteOutput, CarrierResult, ProductResult, ConditionEntry } from "./types";
 import { estimatePremium } from "./premium-estimator";
 import { scoreAcceptance } from "./acceptance-scorer";
+
+function calculateBMI(heightInches: number, weightLbs: number): number {
+  return (weightLbs / (heightInches * heightInches)) * 703;
+}
+
+function getBMINotes(bmi: number): string[] {
+  const notes: string[] = [];
+  if (bmi > 40) {
+    notes.push(`BMI ${bmi.toFixed(1)} — may be declined or heavily rated by most carriers`);
+  } else if (bmi > 35) {
+    notes.push(`BMI ${bmi.toFixed(1)} — substandard rates likely at most carriers`);
+  } else if (bmi > 31.5) {
+    notes.push(`BMI ${bmi.toFixed(1)} — standard rates; excludes preferred at most carriers`);
+  } else if (bmi > 28) {
+    notes.push(`BMI ${bmi.toFixed(1)} — may exclude preferred plus at some carriers`);
+  }
+  return notes;
+}
+
+function getConditionEntries(input: QuoteInput): ConditionEntry[] {
+  // Use new conditions array if provided, fall back to conditionIds
+  if (input.conditions && input.conditions.length > 0) {
+    return input.conditions;
+  }
+  return input.conditionIds.map((id) => ({ conditionId: id }));
+}
 
 function calculateAge(dob: string): number {
   const birth = new Date(dob);
@@ -186,13 +212,40 @@ function evaluateProduct(
 
 export function runMatch(input: QuoteInput): QuoteOutput {
   const age = calculateAge(input.dateOfBirth);
-  const conditionNames = input.conditionIds
+  const conditionEntries = getConditionEntries(input);
+  const activeConditionIds = conditionEntries.map((c) => c.conditionId);
+  const conditionNames = activeConditionIds
     .map((id) => getConditionById(id)?.name ?? id)
     .filter(Boolean);
+
+  // Calculate BMI if height/weight provided
+  const bmi =
+    input.heightInches && input.weightLbs
+      ? calculateBMI(input.heightInches, input.weightLbs)
+      : null;
 
   const results: CarrierResult[] = carriers.map((carrier) => {
     const declineReasons: string[] = [];
     const notes: string[] = [];
+
+    // 0. BMI notes
+    if (bmi !== null) {
+      notes.push(...getBMINotes(bmi));
+      // BMI > 40 is effectively a knockout for most carriers
+      if (bmi > 45) {
+        return {
+          carrierId: carrier.id,
+          carrierName: carrier.name,
+          portalUrl: carrier.portalUrl,
+          eligible: false,
+          acceptancePct: 0,
+          tierPlacement: null,
+          productResults: [],
+          declineReasons: [`BMI ${bmi.toFixed(1)} exceeds maximum build chart limits`],
+          notes: [],
+        };
+      }
+    }
 
     // 1. State check
     if (isStateExcluded(carrier, input.state)) {
@@ -212,11 +265,24 @@ export function runMatch(input: QuoteInput): QuoteOutput {
     // 2. Determine smoker status
     const smoker = isSmoker(input, carrier);
 
-    // 3. Check knockouts
-    const knockout = hasKnockout(carrier, input.conditionIds);
+    // 3. Check knockouts — respect lookback windows if recency provided
+    const knockout = conditionEntries.some((entry) => {
+      if (!carrier.knockoutConditions.includes(entry.conditionId)) return false;
+      // If no recency provided, treat as current/active (knockout)
+      if (entry.diagnosedMonthsAgo === undefined) return true;
+      // Some conditions are always knockout regardless of recency
+      const condition = getConditionById(entry.conditionId);
+      if (!condition) return true;
+      const impact = condition.carrierImpact[carrier.id];
+      if (!impact) return false;
+      // If no lookback specified for this carrier, it's a lifetime knockout
+      if (!impact.lookbackMonths) return true;
+      // Only knockout if within the lookback window
+      return entry.diagnosedMonthsAgo <= impact.lookbackMonths;
+    });
 
     // 4. Determine tier (even if knocked out, for GI products)
-    const tier = determineTier(carrier, input.conditionIds, smoker);
+    const tier = determineTier(carrier, activeConditionIds, smoker);
 
     if (knockout) {
       // Check if carrier has guaranteed issue products
@@ -321,7 +387,7 @@ export function runMatch(input: QuoteInput): QuoteOutput {
 
     // 6. Score acceptance
     const acceptancePct = anyEligible
-      ? scoreAcceptance(input.conditionIds, tier, smoker, age, carrier)
+      ? scoreAcceptance(activeConditionIds, tier, smoker, age, carrier, bmi)
       : 0;
 
     return {

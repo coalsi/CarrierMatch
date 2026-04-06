@@ -59,6 +59,9 @@ export function QuoteForm() {
   const [state, setState] = useState("");
   const [tobaccoStatus, setTobaccoStatus] = useState<"never" | "quit" | "current">("never");
   const [tobaccoQuitMonths, setTobaccoQuitMonths] = useState<number>(12);
+  const [heightFeet, setHeightFeet] = useState("");
+  const [heightInchesRemainder, setHeightInchesRemainder] = useState("");
+  const [weightLbs, setWeightLbs] = useState("");
   const [coverageAmount, setCoverageAmount] = useState(250000);
   const [productTypes, setProductTypes] = useState<ProductType[]>([]);
   const [conditionIds, setConditionIds] = useState<string[]>([]);
@@ -77,6 +80,18 @@ export function QuoteForm() {
         )
       : null;
 
+  // Calculate total height in inches and BMI for display
+  const totalHeightInches =
+    heightFeet && heightInchesRemainder
+      ? parseInt(heightFeet) * 12 + parseInt(heightInchesRemainder)
+      : heightFeet
+        ? parseInt(heightFeet) * 12
+        : undefined;
+  const bmi =
+    totalHeightInches && weightLbs
+      ? (parseInt(weightLbs) / (totalHeightInches * totalHeightInches)) * 703
+      : null;
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!dob || !state || dobYear.length !== 4) return;
@@ -89,6 +104,8 @@ export function QuoteForm() {
         state,
         tobaccoStatus,
         tobaccoQuitMonths: tobaccoStatus === "quit" ? tobaccoQuitMonths : undefined,
+        heightInches: totalHeightInches,
+        weightLbs: weightLbs ? parseInt(weightLbs) : undefined,
         coverageAmount,
         productTypes,
         conditionIds,
@@ -126,7 +143,65 @@ export function QuoteForm() {
               options={US_STATES}
               required
             />
-            <div /> {/* spacer */}
+            <div />
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <div className="space-y-1.5">
+              <label className="block text-sm font-medium text-slate-300">
+                Height <span className="text-slate-500 text-xs">(optional)</span>
+              </label>
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1">
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="5"
+                    value={heightFeet}
+                    onChange={(e) => setHeightFeet(e.target.value.replace(/\D/g, "").slice(0, 1))}
+                    className="w-14 bg-slate-900/80 border border-slate-700 rounded-xl px-3 py-2.5 text-slate-200 text-center placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all duration-200"
+                    maxLength={1}
+                  />
+                  <span className="text-slate-500 text-sm">ft</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="10"
+                    value={heightInchesRemainder}
+                    onChange={(e) => setHeightInchesRemainder(e.target.value.replace(/\D/g, "").slice(0, 2))}
+                    className="w-14 bg-slate-900/80 border border-slate-700 rounded-xl px-3 py-2.5 text-slate-200 text-center placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all duration-200"
+                    maxLength={2}
+                  />
+                  <span className="text-slate-500 text-sm">in</span>
+                </div>
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <label className="block text-sm font-medium text-slate-300">
+                Weight <span className="text-slate-500 text-xs">(optional)</span>
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  placeholder="180"
+                  value={weightLbs}
+                  onChange={(e) => setWeightLbs(e.target.value.replace(/\D/g, "").slice(0, 3))}
+                  className="w-20 bg-slate-900/80 border border-slate-700 rounded-xl px-3 py-2.5 text-slate-200 text-center placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all duration-200"
+                  maxLength={3}
+                />
+                <span className="text-slate-500 text-sm">lbs</span>
+                {bmi !== null && (
+                  <span className={`text-xs ml-2 ${
+                    bmi > 35 ? "text-danger" : bmi > 30 ? "text-warning" : "text-slate-500"
+                  }`}>
+                    BMI: {bmi.toFixed(1)}
+                  </span>
+                )}
+              </div>
+            </div>
           </div>
 
           {state === "NY" && (
